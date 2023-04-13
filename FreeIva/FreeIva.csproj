@@ -84,6 +84,15 @@
     <Reference Include="$(ManagedPath)\UnityEngine.AssetBundleModule.dll">
       <Private>false</Private>
     </Reference>
+    <Reference Include="$(ManagedPath)\UnityEngine.ParticleSystemModule.dll">
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="$(ManagedPath)\UnityEngine.TextRenderingModule.dll">
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="$(ManagedPath)\UnityEngine.ScreenCaptureModule.dll">
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Publicize Include="Assembly-CSharp" />
@@ -95,6 +104,7 @@
     <Compile Include="..\FreeIva_Unity\Assets\Scripts\MeshCutter2.cs">
       <Link>MeshCutter2.cs</Link>
     </Compile>
+    <Compile Include="AssetLoader.cs" />
     <Compile Include="ColliderUtil.cs" />
     <Compile Include="CutParameter.cs" />
     <Compile Include="Experimental\ColliderManipulator.cs" />
@@ -115,6 +125,7 @@
     <Compile Include="Experimental\InteractionCollider.cs" />
     <Compile Include="Experimental\InteractiveIvaProp.cs" />
     <Compile Include="Experimental\ModuleInternalPressure.cs" />
+    <Compile Include="InternalModules\PhysicalProp.cs" />
     <Compile Include="ModuleFreeIvaPartInfo.cs" />
     <Compile Include="Shim\Kerbalism_Habitat.cs" />
     <Compile Include="InternalModules\PropBuckleButton.cs" />

@@ -94,15 +94,6 @@ namespace FreeIva
 			ivaSun.ivaLight.shadowBias = 0;
 			ivaSun.ivaLight.shadowNormalBias = 0;
 			ivaSun.ivaLight.shadows = LightShadows.Hard;
-			
-
-			// prevent mouse clicks from hitting the kerbal collider or the internal shell
-			// Some of the shell colliders are a little too tight and block props
-			// This has a few downsides:
-			// -you're able to click on things through hatches (unless they have a second collider on layer 20)
-			// -any props that are on the wrong layer (16) will not be clickable
-			// eventually it might be prudent to undo this change, make the kerbal a single capsule collider, and fix the shell colliders instead
-			InternalCamera.Instance._camera.eventMask &= ~(1 << (int)Layers.Kerbals);
 		}
 
 		private void OnCrewOnEva(GameEvents.FromToAction<Part, Part> data)
@@ -219,6 +210,23 @@ namespace FreeIva
 		public void FixedUpdate()
 		{
 			UpdateCurrentPart();
+
+			// prevent mouse clicks from hitting the kerbal collider or the internal shell
+			// Some of the shell colliders are a little too tight and block props
+			// This has a few downsides:
+			// -you're able to click on things through hatches (unless they have a second collider on layer 20)
+			// -any props that are on the wrong layer (16) will not be clickable
+			// eventually it might be prudent to undo this change, make the kerbal a single capsule collider, and fix the shell colliders instead
+
+			// update for Physical Props: allow clicking on layer 16 when the modifier key is held
+			if (GameSettings.MODIFIER_KEY.GetKey())
+			{
+				InternalCamera.Instance._camera.eventMask |= (1 << (int)Layers.Kerbals);
+			}
+			else
+			{
+				InternalCamera.Instance._camera.eventMask &= ~(1 << (int)Layers.Kerbals);
+			}
 		}
 
 		bool m_internalVisibilityDirty = false;
@@ -230,6 +238,38 @@ namespace FreeIva
 				EnableInternals();
 				KSP.UI.Screens.Flight.KerbalPortraitGallery.Instance.StopCoroutine(KSP.UI.Screens.Flight.KerbalPortraitGallery.Instance.refreshCoroutine);
 				m_internalVisibilityDirty = false;
+			}
+
+			if (PhysicalProp.HeldProp != null)
+			{
+				if (Input.GetMouseButtonDown(0))
+				{
+					if (GameSettings.MODIFIER_KEY.GetKey())
+					{
+						if (PhysicalProp.HeldProp.isSticky)
+						{
+							Ray ray = InternalCamera.Instance._camera.ScreenPointToRay(Input.mousePosition);
+							if (Physics.Raycast(ray, out RaycastHit hit, 2f, InternalCamera.Instance._camera.eventMask, QueryTriggerInteraction.Collide))
+							{
+								PhysicalProp.HeldProp.Stick(hit.point + hit.normal * 0.005f);
+							}
+						}
+						else
+						{
+							PhysicalProp.HeldProp.ThrowProp();
+						}
+					}
+					else
+					{
+						// TODO: it would be nice to somehow figure out if we were clicking on UI or another prop or something
+						PhysicalProp.HeldProp.StartInteraction();
+					}
+				}
+
+				if (Input.GetMouseButtonUp(0) && !GameSettings.MODIFIER_KEY.GetKey())
+				{
+					PhysicalProp.HeldProp.StopInteraction();
+				}
 			}
 		}
 
