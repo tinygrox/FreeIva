@@ -246,7 +246,7 @@ namespace FreeIva
 			bool openHatch = h.IsOpen;
 			openHatch = GUILayout.Toggle(openHatch, "Open");
 			if (h.IsOpen != openHatch)
-				h.Open(openHatch);
+				h.SetDesiredOpen(openHatch);
 			// PositionIvaObject(h.gameObject);
 			GUILayout.EndVertical();
 
@@ -823,8 +823,6 @@ namespace FreeIva
 				GuiUtils.label("Coriolis force", coriolisForce);
 
 				GuiUtils.label("Main G Internal", InternalSpace.InternalToWorld(gForce));
-
-				KerbalIvaAddon.Instance.KerbalIva.KerbalFeetCollider.center = GuiUtils.editVector("KerbalFeet Center", KerbalIvaAddon.Instance.KerbalIva.KerbalFeetCollider.center);
 			}
 		}
 

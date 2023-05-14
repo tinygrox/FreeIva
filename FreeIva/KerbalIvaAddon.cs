@@ -47,9 +47,6 @@ namespace FreeIva
 		public InternalSeat OriginalSeat = null;
 		public InternalSeat TargetedSeat = null;
 		public bool Gravity = true;
-#if Experimental
-		public static bool CanHoldItems = false;
-#endif
 		public static Vector3 flightForces;
 
 		private CameraManager.CameraMode _lastCameraMode = CameraManager.CameraMode.Flight;
@@ -107,7 +104,6 @@ namespace FreeIva
 			{
 				Gravity = !Gravity && Settings.EnableCollisions;
 				ScreenMessages.PostScreenMessage(Gravity ? str_GravityEnabled : str_GravityDisabled, 1f, ScreenMessageStyle.LOWER_CENTER);
-				KerbalIva.KerbalFeetCollider.enabled = KerbalIva.UseRelativeMovement();
 			}
 
 			if (!buckled && GameSettings.CAMERA_MODE.GetKeyDown(true))
@@ -470,6 +466,7 @@ namespace FreeIva
 			KerbalIva.gameObject.SetActive(false);
 			HideCurrentKerbal(false);
 			DisablePartHighlighting(false);
+			FreeIvaInternalCameraSwitch.SetCameraSwitchesEnabled(true);
 			InputLockManager.RemoveControlLock("FreeIVA");
 			//ActiveKerbal.flightLog.AddEntry("Buckled");
 			ScreenMessages.PostScreenMessage(str_Buckled, 1f, ScreenMessageStyle.LOWER_CENTER);
@@ -537,6 +534,31 @@ namespace FreeIva
 			FreeIva.EnableInternals(); // SetCameraIVA also calls FlightGlobals.ActiveVessel.SetActiveInternalSpace(activeInternalPart); which will hide all other IVAs
 		}
 
+		public static Part GetPartContainingCrew(ProtoCrewMember crewMember)
+		{
+			// Kerbalref.InPart is always the part where the kerbal was last *seated*
+			// most of the time, this is also the part that contains their protocrewmember.
+			// but sometimes when entering a seat we don't actually transfer the kerbal between parts - specifically when the seat is in a part that doesn't have enough crew capacity e.g. science lab or inline docking port
+			Part containingPart = crewMember.KerbalRef.InPart;
+
+			if (containingPart.protoModuleCrew.Contains(crewMember))
+			{
+				return containingPart;
+			}
+			else
+			{
+				foreach (var part in containingPart.vessel.parts)
+				{
+					if (part.protoModuleCrew.Contains(crewMember))
+					{
+						return part;
+					}
+				}
+			}
+
+			return null;
+		}
+
 		public void MoveKerbalToSeat(ProtoCrewMember crewMember, InternalSeat newSeat)
 		{
 			var oldSeat = crewMember.seat;
@@ -554,29 +576,12 @@ namespace FreeIva
 			}
 			else if (destModel.part.protoModuleCrew.Count < destModel.part.CrewCapacity)
 			{
-				bool removedCrewFromOldPart = false;
-
-				// fully move the kerbal
-				if (crewMember.KerbalRef.InPart.protoModuleCrew.Contains(crewMember))
+				Part oldPart = GetPartContainingCrew(crewMember);
+				if (oldPart != null)
 				{
-					crewMember.KerbalRef.InPart.RemoveCrewmember(crewMember);
-					removedCrewFromOldPart = true;
-				}
-				else
-				{
-					foreach (var part in sourceModel.vessel.parts)
-					{
-						if (part.protoModuleCrew.Contains(crewMember))
-						{
-							part.RemoveCrewmember(crewMember);
-							removedCrewFromOldPart = true;
-							break;
-						}
-					}
-				}
-
-				if (removedCrewFromOldPart)
-				{
+					// fully move the kerbal
+					oldPart.RemoveCrewmember(crewMember);
+					
 					destModel.part.AddCrewmemberAt(crewMember, destModel.seats.IndexOf(newSeat));
 
 					// suppress the portrait system's response to this message because it messes with internal model visibility
@@ -652,6 +657,7 @@ namespace FreeIva
 			PlaySeatBuckleAudio(OriginalSeat);
 
 			DisablePartHighlighting(true);
+			FreeIvaInternalCameraSwitch.SetCameraSwitchesEnabled(false);
 		}
 
 		private void UpdateActiveKerbal()
@@ -807,14 +813,27 @@ namespace FreeIva
 
 		void ConsiderHatch(ref FreeIvaHatch targetedHatch, ref float closestDistance, FreeIvaHatch newHatch)
 		{
-			// should each hatch specify its own offset point? This code is mostly for the benefit of the BDB LM, where the hatch origins are at the center of the IVA
-			Vector3 localOffset = newHatch.HandleTransform 
-				? newHatch.transform.InverseTransformPoint(newHatch.HandleTransform.position)
-				: Vector3.zero;
+			if (!newHatch.enabled) return;
 
-			if (newHatch.enabled && IsTargeted(newHatch.transform, localOffset, ref closestDistance))
+			if (newHatch.HandleTransforms == null)
 			{
-				targetedHatch = newHatch;
+				if (IsTargeted(newHatch.transform, Vector3.zero, ref closestDistance))
+				{
+					targetedHatch = newHatch;
+				}
+			}
+			else
+			{
+				// should each hatch specify its own offset point? This code is mostly for the benefit of the BDB LM, where the hatch origins are at the center of the IVA
+				foreach (var handleTransform in newHatch.HandleTransforms)
+				{
+					Vector3 localOffset = newHatch.transform.InverseTransformPoint(handleTransform.position);
+
+					if (IsTargeted(newHatch.transform, localOffset, ref closestDistance))
+					{
+						targetedHatch = newHatch;
+					}
+				}
 			}
 		}
 
@@ -837,7 +856,7 @@ namespace FreeIva
 			FreeIvaHatch targetedHatch = null;
 			float closestDistance = Settings.MaxInteractDistance;
 
-			for (var internalModule = FreeIva.CurrentInternalModuleFreeIva; internalModule != null; internalModule = InternalModuleFreeIva.GetForModel(internalModule.SecondaryInternalModel))
+			for (var internalModule = InternalModuleFreeIva.GetForModel(FreeIva.CurrentPart?.internalModel); internalModule != null; internalModule = InternalModuleFreeIva.GetForModel(internalModule.SecondaryInternalModel))
 			{
 				if (internalModule.isActiveAndEnabled)
 				{
@@ -870,74 +889,34 @@ namespace FreeIva
 
 			if (targetedHatch != null)
 			{
-				bool canOpenHatch = false;
+				var interaction = targetedHatch.GetInteraction();
 
-				if (targetedHatch.IsBlockedByAnimation())
-				{
-					ScreenMessages.PostScreenMessage(str_HatchLocked,
-							0.1f, ScreenMessageStyle.LOWER_CENTER);
-				}
-				else if (targetedHatch.ConnectedHatch == null)
-				{
-					if (targetedHatch.CanEVA)
-					{
-						ScreenMessages.PostScreenMessage(str_GoEVA + " [" + Settings.OpenHatchKey + "]", 0.1f, ScreenMessageStyle.LOWER_CENTER);
+				PostHatchInteractionMessage(interaction);
 
-						if (openHatch)
-						{
-							targetedHatch.GoEVA();
-						}
-					}
-					else if (targetedHatch.attachNodeId != string.Empty || targetedHatch.dockingPortNodeName != string.Empty)
-					{
-						ScreenMessages.PostScreenMessage(str_HatchBlocked, 0.1f, ScreenMessageStyle.LOWER_CENTER);
-					}
-					else
-					{
-						canOpenHatch = true;
-					}
-				}
-				else
+				if (FreeIvaHatch.InteractionAllowed(interaction) && openHatch)
 				{
-					canOpenHatch = true;
-				}
-				
-				if (canOpenHatch)
-				{
-					ScreenMessages.PostScreenMessage((targetedHatch.IsOpen ? str_CloseHatch : str_OpenHatch) + " [" + Settings.OpenHatchKey + "]",
-						0.1f, ScreenMessageStyle.LOWER_CENTER);
-
-					if (openHatch)
-						targetedHatch.ToggleHatch();
+					targetedHatch.SetDesiredOpen(!targetedHatch.DesiredOpen);
 				}
 			}
 		}
 
-		
-
-#if Experimental
-		private static Transform _oldParent = null;
-		private static Transform HeldItem = null;
-		public static bool HoldingItem { get; private set; }
-		public static void HoldItem(Transform t)
+		public static void PostHatchInteractionMessage(FreeIvaHatch.Interaction interaction)
 		{
-			if (!CanHoldItems) return;
-
-			if (HoldingItem)
-				HeldItem.transform.parent = _oldParent;
-
-			_oldParent = t.transform.parent;
-			HeldItem = t;
-			HeldItem.transform.parent = InternalCamera.Instance.transform;
-			HoldingItem = true;
+			ScreenMessages.PostScreenMessage(GetInteractionString(interaction), 0.1f, ScreenMessageStyle.LOWER_CENTER);
 		}
 
-		public static void DropHeldItem()
+		private static string GetInteractionString(FreeIvaHatch.Interaction interaction)
 		{
-			if (HeldItem != null && HeldItem.transform != null)
-				HeldItem.transform.parent = _oldParent;
+			switch (interaction)
+			{
+			case FreeIvaHatch.Interaction.Locked: return str_HatchLocked;
+			case FreeIvaHatch.Interaction.EVA: return str_GoEVA + " [" + Settings.OpenHatchKey + "]";
+			case FreeIvaHatch.Interaction.Blocked: return str_HatchBlocked;
+			case FreeIvaHatch.Interaction.Open: return str_OpenHatch + " [" + Settings.OpenHatchKey + "]";
+			case FreeIvaHatch.Interaction.Close: return str_CloseHatch + " [" + Settings.OpenHatchKey + "]";
+			default: return string.Empty;
+			}
 		}
-#endif
 
 		public void OnCollisionEnter(Collision collision)
 		{

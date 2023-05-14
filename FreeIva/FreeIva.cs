@@ -209,6 +209,8 @@ namespace FreeIva
 
 		public void FixedUpdate()
 		{
+			if (CameraManager.Instance.currentCameraMode != CameraManager.CameraMode.IVA && CameraManager.Instance.currentCameraMode != CameraManager.CameraMode.Internal) return;
+
 			UpdateCurrentPart();
 
 			// prevent mouse clicks from hitting the kerbal collider or the internal shell
