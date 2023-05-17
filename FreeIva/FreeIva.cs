@@ -258,7 +258,7 @@ namespace FreeIva
 						}
 						else
 						{
-							PhysicalProp.HeldProp.ThrowProp();
+							PhysicalProp.ThrowProp();
 						}
 					}
 					else

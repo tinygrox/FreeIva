@@ -189,6 +189,12 @@ namespace FreeIva
 					{
 						ColliderUtil.CreateCollider(m_doorTransform, colliderNode, internalProp.propName);
 					}
+
+					// if this module is placed directly in the internal (doesn't have its own model) and using transforms from the internal model itself, we need to attach it to this object so that line-of-sight checks work
+					if (!internalProp.hasModel)
+					{
+						m_doorTransform.SetParent(transform, true);
+					}
 				}
 				else if (doorTransformName != string.Empty)
 				{
@@ -460,12 +466,11 @@ namespace FreeIva
 
 				if (_connectedHatch.m_doorTransform != null)
 				{
-					// Do we still want to do this? I think not...or at least turn it into a another config param
-					// _connectedHatch.m_doorTransform.gameObject.SetActive(false);
+					_connectedHatch.m_doorTransform.gameObject.SetActive(false);
 				}
 
 				enabled = false;
-				//_connectedHatch.enabled = false;
+				_connectedHatch.enabled = false;
 			}
 
 			// if we have a connection, or this is just some internal hatch with no functionality, we want to be able to see internals beyond the window, so set the draw order later
